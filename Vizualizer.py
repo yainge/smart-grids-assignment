@@ -5,8 +5,9 @@ import constants
 
 class Vizualizer:
 
-    def __init__(self, sim_length) -> None:
+    def __init__(self, sim_length, mode="decentralized") -> None:
         self.sim_length = sim_length
+        self.mode = mode
 
     def plot_results_reference_and_total_load(self, reference_load : np.ndarray, total_load : np.ndarray):
         """
@@ -19,13 +20,14 @@ class Vizualizer:
 
         # Plot total calculated load and the reference load
         reference_load = reference_load[0:self.sim_length]
-        plt.title("Total Load Neighborhood")
+        plt.title(f"Total Load Neighborhood ({self.mode} control)")
         plt.plot(reference_load, label="Reference")
         plt.plot(total_load, label="Simulation")
         plt.xlabel('PTU [-]')
         plt.ylabel('Kilowatt [kW]')
         plt.legend()
         plt.grid(True)
+        plt.savefig(f"figures/{self.mode}_total_load.png", dpi=150, bbox_inches="tight")
         plt.show()
 
         # Calculate average daily profile
@@ -41,13 +43,14 @@ class Vizualizer:
         reference_split /= max_val
     
         # Plot the average daily profiles
-        plt.title("Normalized Daily Power Profile")
+        plt.title(f"Normalized Daily Power Profile ({self.mode} control)")
         plt.plot(np.arange(1, amount_of_time_steps_in_day + 1) * time_step_seconds / 3600, power_split, label = 'Simulation')
         plt.plot(np.arange(1, amount_of_time_steps_in_day + 1) * time_step_seconds / 3600, reference_split, label = "Reference")
         plt.xlabel('Hour [-]')
         plt.ylabel('Relative Power [-]')
         plt.legend()
         plt.grid(True)
+        plt.savefig(f"figures/{self.mode}_daily_profile.png", dpi=150, bbox_inches="tight")
         plt.show()
 
     def print_metrics_renewable_share_total_load(self, renewable_share : np.ndarray, total_load : np.ndarray):
