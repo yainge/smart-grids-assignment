@@ -177,6 +177,8 @@ def main():
     """
     Run this function to start a simulation
     """
+    ## YKA 
+    ## Add ability to pass in centralized or decentralized argument 
     parser = argparse.ArgumentParser()
     parser.add_argument("control_strategy", choices=["centralized", "decentralized"])
     args = parser.parse_args()
