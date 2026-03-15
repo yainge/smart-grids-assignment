@@ -5,7 +5,7 @@ import constants
 
 class Vizualizer:
 
-    def __init__(self, sim_length, mode="decentralized") -> None:
+    def __init__(self, sim_length, mode) -> None:
         self.sim_length = sim_length
         self.mode = mode
 
@@ -29,6 +29,8 @@ class Vizualizer:
         plt.grid(True)
         plt.savefig(f"figures/{self.mode}_total_load.png", dpi=150, bbox_inches="tight")
         plt.show()
+        plt.close()
+
 
         # Calculate average daily profile
         amount_of_time_steps_in_day = constants.AMOUNT_OF_TIME_STEPS_IN_DAY
@@ -52,6 +54,7 @@ class Vizualizer:
         plt.grid(True)
         plt.savefig(f"figures/{self.mode}_daily_profile.png", dpi=150, bbox_inches="tight")
         plt.show()
+        plt.close()
 
     def print_metrics_renewable_share_total_load(self, renewable_share : np.ndarray, total_load : np.ndarray):
         """
