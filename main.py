@@ -1,4 +1,5 @@
 from typing import List
+import argparse
 import numpy as np
 import time
 
@@ -10,9 +11,7 @@ import constants
 
 TIME_STEP_SECONDS = constants.TIME_STEP_SECONDS
 
-# "decentralized" or "centralized"
-#CONTROL_MODE = "decentralized"  
-CONTROL_MODE = "centralized"  
+# Renewable share threshold set based on ____________
 HIGH_REN_THRESHOLD = 0.6
 LOW_REN_THRESHOLD = 0.4
 
@@ -97,10 +96,9 @@ def batt_strategy(time_step : int, temperature_data : np.ndarray, renewable_shar
     # Example: do nothing, determine the consumption of the battery in the house strategy
     # pass
 
-    # In centralized mode, default to 0; neighborhood_strategy will override.
-    # In decentralized mode, leave None so house_strategy sets it.
-    if CONTROL_MODE == "centralized":
-        batt.consumption[time_step] = 0.0
+    # Default to 0; neighborhood_strategy will override in centralized,
+    # house_strategy will override in decentralized.
+    batt.consumption[time_step] = 0.0
 
 def house_strategy(time_step : int, temperature_data : np.ndarray, renewable_share : np.ndarray, base_data : np.ndarray,
                    pv : PVInstallation, ev : EVInstallation, batt : Battery, hp : Heatpump):
@@ -114,12 +112,8 @@ def house_strategy(time_step : int, temperature_data : np.ndarray, renewable_sha
     - batt.consumption[time_step]
     """
 
-    # Centralized mode: neighborhood_strategy manages batteries
-    if CONTROL_MODE == "centralized":
-        return
-
-    # Decentralized mode: each house manages its own battery
-    # Example: only set batt.consumption[time_step]
+    ## YKA
+    ## Decentralized Strategy logic: Each house manages its own battery based on its own net load
     house_load = base_data[time_step] + pv.consumption[time_step] + ev.consumption[time_step] + hp.consumption[time_step]
     if house_load <= 0: # if the combined load is negative, charge the battery
         batt.consumption[time_step] = min(-house_load, batt.max)
@@ -137,11 +131,14 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
     - hp.consumption[time_step] for hp in hps
     - batt.consumption[time_step] for batt in batteries
     """
-    if CONTROL_MODE != "centralized":
-        return
+
+    ## YKA
+    ## Centralized Strategy logic: Batteries are chared based on neighborhood totals and 
+    ## are charged from the grid when the national renewable share is is high
 
     n = len(batteries)
-    # Total neighborhood net load excluding batteries (already set to 0 by batt_strategy)
+    
+    # Total neighborhood net load excluding batteries 
     total_net_load = sum(
         baseloads[i][time_step] + pvs[i].consumption[time_step] + evs[i].consumption[time_step] + hps[i].consumption[time_step]
         for i in range(n)
@@ -149,8 +146,11 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
 
     ren = renewable_share[time_step]
 
+
+    # When there is no local generation, charge batteries if there is
+    # a high renewable share on the national grid 
     if total_net_load < 0:
-        # Local PV surplus: charge batteries greedily
+        # Local PV surplus: charge batteries
         target = -total_net_load
         for batt in batteries:
             charge = min(target, batt.max)
@@ -159,11 +159,11 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
             if target <= 0:
                 break
     elif ren >= HIGH_REN_THRESHOLD:
-        # High renewable share on grid: charge all batteries from grid
+        # High renewable share on grid: charge batteries from grid
         for batt in batteries:
             batt.consumption[time_step] = batt.max
     elif ren <= LOW_REN_THRESHOLD:
-        # Low renewable share: discharge batteries to reduce dirty import
+        # Low renewable share: discharge batteries to reduce import
         target = total_net_load
         for batt in batteries:
             discharge = min(target, -batt.min)  # batt.min is negative
@@ -177,13 +177,20 @@ def main():
     """
     Run this function to start a simulation
     """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("control_strategy", choices=["centralized", "decentralized"])
+    args = parser.parse_args()
+    control_strategy = args.control_strategy
 
     # Set up simulation
     number_of_houses = 100  # <= 100
     amount_of_days_to_simulate = 364  # <= 364
     sim_length = amount_of_days_to_simulate * constants.AMOUNT_OF_TIME_STEPS_IN_DAY
 
-    strategy_order = [StrategyOrder.INDIVIDUAL, StrategyOrder.HOUSEHOLD, StrategyOrder.NEIGHBORHOOD]
+    if control_strategy == "centralized":
+        strategy_order = [StrategyOrder.INDIVIDUAL, StrategyOrder.NEIGHBORHOOD]
+    else:
+        strategy_order = [StrategyOrder.INDIVIDUAL, StrategyOrder.HOUSEHOLD]
 
     simulator = Simulator(control_order=strategy_order,
                           battery_strategy=batt_strategy, 
@@ -202,7 +209,7 @@ def main():
     print(f'Duration: {time.time() - start_time} seconds')
     
     # Show Results
-    vizualizer = Vizualizer(sim_length, CONTROL_MODE)
+    vizualizer = Vizualizer(sim_length, control_strategy)
     vizualizer.plot_results_reference_and_total_load(simulator.reference_load, simulator.total_load)
     vizualizer.print_metrics_renewable_share_total_load(simulator.ren_share, simulator.total_load)
 
@@ -216,7 +223,7 @@ def main():
     local_pv_used = np.maximum(0.0, pv_generated - grid_export)
     total_cons = local_pv_used + grid_import
     ren_consumed = local_pv_used + ren_s * grid_import
-    print(f"\nMETRICS ({CONTROL_MODE.upper()} CONTROL):")
+    print(f"\nMETRICS ({control_strategy.upper()} CONTROL):")
     print(f"  Renewable share of consumption: {np.sum(ren_consumed) / np.sum(total_cons) * 100:.2f}%")
     print(f"  Local PV absorption:            {np.sum(local_pv_used) / np.sum(pv_generated) * 100:.2f}%")
     print(f"  Grid import share:              {np.sum(grid_import) / np.sum(total_cons) * 100:.2f}%")
