@@ -28,8 +28,6 @@ class Vizualizer:
         plt.legend()
         plt.grid(True)
         plt.savefig(f"figures/{self.mode}_total_load.png", dpi=150, bbox_inches="tight")
-        # plt.show()
-        # plt.close()
 
 
         # Calculate average daily profile
@@ -53,8 +51,6 @@ class Vizualizer:
         plt.legend()
         plt.grid(True)
         plt.savefig(f"figures/{self.mode}_daily_profile.png", dpi=150, bbox_inches="tight")
-        #plt.show()
-        #plt.close()
 
     def print_metrics_renewable_share_total_load(self, renewable_share : np.ndarray, total_load : np.ndarray):
         """

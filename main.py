@@ -1,7 +1,6 @@
 from typing import List
 import argparse
 import numpy as np
-import time
 
 from Simulator import Simulator, StrategyOrder
 from ModelClasses import PVInstallation, EVInstallation, Heatpump, Battery
@@ -11,9 +10,9 @@ import constants
 
 TIME_STEP_SECONDS = constants.TIME_STEP_SECONDS
 
-# Renewable share threshold set based on ____________
+# Renewable share threshold set based on literature review
 HIGH_REN_THRESHOLD = 0.6
-LOW_REN_THRESHOLD = 0.45
+LOW_REN_THRESHOLD = 0.4
 
 def pv_strategy(time_step : int, temperature_data : np.ndarray, renewable_share : np.ndarray, pv : PVInstallation):
     """
@@ -112,7 +111,6 @@ def house_strategy(time_step : int, temperature_data : np.ndarray, renewable_sha
     - batt.consumption[time_step]
     """
 
-    ## YKA
     ## Decentralized Strategy logic: Each house manages its own battery based on its own net load
     house_load = base_data[time_step] + pv.consumption[time_step] + ev.consumption[time_step] + hp.consumption[time_step]
     if house_load <= 0: # if the combined load is negative, charge the battery
@@ -132,9 +130,8 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
     - batt.consumption[time_step] for batt in batteries
     """
 
-    ## YKA
-    ## Centralized Strategy logic: Batteries are chared based on neighborhood totals and 
-    ## are charged from the grid when the national renewable share is is high
+    ## Centralized Strategy logic: Batteries are charged based on neighborhood totals and 
+    ## are charged from the grid when the national renewable share is high
 
     n = len(batteries)
     
@@ -162,6 +159,7 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
     elif total_net_load > 0:
         # High renewable share on grid: charge batteries from grid
         if ren >= HIGH_REN_THRESHOLD:
+            # aggresive charging when ren share is high
             for batt in batteries:
                 batt.consumption[time_step] = batt.max
         # Low renewable share on grid: discharge the batteries
@@ -179,7 +177,7 @@ def main():
     """
     Run this function to start a simulation
     """
-    ## YKA 
+     
     ## Add ability to pass in centralized or decentralized strategy as an argument 
     parser = argparse.ArgumentParser()
     parser.add_argument("control_strategy", choices=["centralized", "decentralized"])
@@ -222,20 +220,27 @@ def main():
 
     # Additional metrics
     total_pv = np.sum(np.array([pv.consumption.astype(float) for pv in simulator.pvs]), axis=0)
-    pv_generated = -total_pv  # positive kW
+    pv_generated = -total_pv  
     ren_s = simulator.ren_share[:sim_length]
     total_load = simulator.total_load
     grid_import = np.maximum(total_load, 0.0)
     grid_export = np.maximum(-total_load, 0.0)
     local_pv_used = np.maximum(0.0, pv_generated - grid_export)
-    total_cons = local_pv_used + grid_import
+
+    total_base = np.sum(np.array([bl[:sim_length] for bl in simulator.base_loads]), axis=0)
+    total_ev   = np.sum(np.array([ev.consumption.astype(float) for ev in simulator.evs]), axis=0)
+    total_hp   = np.sum(np.array([hp.consumption.astype(float) for hp in simulator.hps]), axis=0)
+    batt_arrays = np.array([b.consumption.astype(float) for b in simulator.batteries])
+    total_batt_charge = np.sum(np.maximum(batt_arrays, 0), axis=0)
+    total_cons = total_base + total_ev + total_hp + total_batt_charge
+
     ren_consumed = local_pv_used + ren_s * grid_import
+    total_energy_supplied = local_pv_used + grid_import
 
     print(f"\nMETRICS ({control_strategy.upper()} CONTROL):")
-    print(f"  Renewable share of consumption: {np.sum(ren_consumed) / np.sum(total_cons) * 100:.2f}%")
-    print(f"  Local PV absorption:            {np.sum(local_pv_used) / np.sum(pv_generated) * 100:.2f}%")
-    print(f"  Grid import share:              {np.sum(grid_import) / np.sum(total_cons) * 100:.2f}%")
-
+    print(f"  Renewable share of supplied electricity: {np.sum(ren_consumed) / np.sum(total_energy_supplied) * 100:.2f}%")
+    print(f"  Local PV absorption:                      {np.sum(local_pv_used) / np.sum(pv_generated) * 100:.2f}%")
+    print(f"  Grid import share of supplied electricity:{np.sum(grid_import) / np.sum(total_energy_supplied) * 100:.2f}%")
 
 if __name__ == '__main__':
     exit(main())
