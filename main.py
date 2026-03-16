@@ -13,7 +13,7 @@ TIME_STEP_SECONDS = constants.TIME_STEP_SECONDS
 
 # Renewable share threshold set based on ____________
 HIGH_REN_THRESHOLD = 0.6
-LOW_REN_THRESHOLD = 0.4
+LOW_REN_THRESHOLD = 0.45
 
 def pv_strategy(time_step : int, temperature_data : np.ndarray, renewable_share : np.ndarray, pv : PVInstallation):
     """
@@ -146,11 +146,12 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
 
     ren = renewable_share[time_step]
 
-
-    # When there is no local generation, charge batteries if there is
-    # a high renewable share on the national grid 
+    ## YKA
+    # 1: absorb neighborhood PV surplus into batteries
+    # 2: if there is no PV surplus, charge batteries from grid when renewable share is high,
+    # or discharge batteries to reduce imports when renewable share is low
     if total_net_load < 0:
-        # Local PV surplus: charge batteries
+        # Local PV surplus: charge batteries off the surplus
         target = -total_net_load
         for batt in batteries:
             charge = min(target, batt.max)
@@ -158,27 +159,28 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
             target -= charge
             if target <= 0:
                 break
-    elif ren >= HIGH_REN_THRESHOLD:
+    elif total_net_load > 0:
         # High renewable share on grid: charge batteries from grid
-        for batt in batteries:
-            batt.consumption[time_step] = batt.max
-    elif ren <= LOW_REN_THRESHOLD:
-        # Low renewable share: discharge batteries to reduce import
-        target = total_net_load
-        for batt in batteries:
-            discharge = min(target, -batt.min)  # batt.min is negative
-            batt.consumption[time_step] = -discharge
-            target -= discharge
-            if target <= 0:
-                break
-    # else: do nothing (batteries stay at 0 from batt_strategy)
+        if ren >= HIGH_REN_THRESHOLD:
+            for batt in batteries:
+                batt.consumption[time_step] = batt.max
+        # Low renewable share on grid: discharge the batteries
+        elif ren <= LOW_REN_THRESHOLD:
+            target = total_net_load
+            for batt in batteries:
+                discharge = min(target, -batt.min)  
+                batt.consumption[time_step] = -discharge
+                target -= discharge
+                if target <= 0:
+                    break
+    #else: total_net_load == 0 or mid range renewable share: batteries charge delta stays at 0
 
 def main():
     """
     Run this function to start a simulation
     """
     ## YKA 
-    ## Add ability to pass in centralized or decentralized argument 
+    ## Add ability to pass in centralized or decentralized strategy as an argument 
     parser = argparse.ArgumentParser()
     parser.add_argument("control_strategy", choices=["centralized", "decentralized"])
     args = parser.parse_args()
@@ -191,9 +193,12 @@ def main():
 
     if control_strategy == "centralized":
         strategy_order = [StrategyOrder.INDIVIDUAL, StrategyOrder.NEIGHBORHOOD]
-    else:
+    elif control_strategy == "decentralized":
         strategy_order = [StrategyOrder.INDIVIDUAL, StrategyOrder.HOUSEHOLD]
-
+    else:
+        print("Invalid command. Indicate strategy with: python main.py centralized  OR  python main.py decentralized")
+        exit(1)
+    
     simulator = Simulator(control_order=strategy_order,
                           battery_strategy=batt_strategy, 
                           hp_strategy=hp_strategy, 
@@ -225,10 +230,12 @@ def main():
     local_pv_used = np.maximum(0.0, pv_generated - grid_export)
     total_cons = local_pv_used + grid_import
     ren_consumed = local_pv_used + ren_s * grid_import
+
     print(f"\nMETRICS ({control_strategy.upper()} CONTROL):")
     print(f"  Renewable share of consumption: {np.sum(ren_consumed) / np.sum(total_cons) * 100:.2f}%")
     print(f"  Local PV absorption:            {np.sum(local_pv_used) / np.sum(pv_generated) * 100:.2f}%")
     print(f"  Grid import share:              {np.sum(grid_import) / np.sum(total_cons) * 100:.2f}%")
+
 
 if __name__ == '__main__':
     exit(main())
