@@ -113,12 +113,6 @@ class Vizualizer:
 
     @staticmethod
     def plot_metrics_comparison(centralized_metrics, decentralized_metrics):
-        """
-        Bar chart comparing renewable share, local PV absorption, and grid import share
-        between centralized and decentralized control.
-
-        Each metrics dict has keys: 'renewable_share', 'local_pv_absorption', 'grid_import_share'
-        """
         labels = ["Renewable Share\nof Supplied Electricity", "Local PV\nAbsorption", "Grid Import Share\nof Supplied Electricity"]
         cent_vals = [
             centralized_metrics["renewable_share"],

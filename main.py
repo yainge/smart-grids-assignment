@@ -111,12 +111,23 @@ def house_strategy(time_step : int, temperature_data : np.ndarray, renewable_sha
     - batt.consumption[time_step]
     """
 
-    ## Decentralized Strategy logic: Each house manages its own battery based on its own net load
+    ## Decentralized Strategy: each house manages its own battery using local net load
+    ## and the national renewable share signal.
     house_load = base_data[time_step] + pv.consumption[time_step] + ev.consumption[time_step] + hp.consumption[time_step]
-    if house_load <= 0: # if the combined load is negative, charge the battery
+    ren = renewable_share[time_step]
+
+    if house_load <= 0:
+        # Local PV surplus: charge battery to absorb as much as possible locally
         batt.consumption[time_step] = min(-house_load, batt.max)
-    else: # discharge the battery otherwise
+    elif ren >= HIGH_REN_THRESHOLD:
+        # Grid is predominantly renewable: charge from the grid
+        batt.consumption[time_step] = batt.max
+    elif ren <= LOW_REN_THRESHOLD:
+        # Grid is predominantly non-renewable: discharge to cover local load and reduce imports
         batt.consumption[time_step] = max(-house_load, batt.min)
+    else:
+        # Mid-range renewable share: no charge or discharge
+        batt.consumption[time_step] = 0.0
 
 def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_share : np.ndarray, baseloads : np.ndarray,
                           pvs : List[PVInstallation], evs : List[EVInstallation], hps : List[Heatpump], batteries : List[Battery]):
@@ -130,12 +141,12 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
     - batt.consumption[time_step] for batt in batteries
     """
 
-    ## Centralized Strategy logic: Batteries are charged based on neighborhood totals and 
+    ## Centralized Strategy: Batteries are charged based on neighborhood load totals and 
     ## are charged from the grid when the national renewable share is high
 
     n = len(batteries)
     
-    # Total neighborhood net load excluding batteries 
+    # Total neighborhood net load. Does not include batteries. 
     total_net_load = sum(
         baseloads[i][time_step] + pvs[i].consumption[time_step] + evs[i].consumption[time_step] + hps[i].consumption[time_step]
         for i in range(n)
@@ -158,10 +169,9 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
     elif total_net_load > 0:
         # High renewable share on grid: charge batteries from grid
         if ren >= HIGH_REN_THRESHOLD:
-            # aggresive charging when ren share is high
             for batt in batteries:
                 batt.consumption[time_step] = batt.max
-        # Low renewable share on grid: discharge the batteries
+        # Low renewable share on grid: discharge/use the batteries
         elif ren <= LOW_REN_THRESHOLD:
             target = total_net_load
             for batt in batteries:
@@ -248,6 +258,10 @@ def main():
 
     ren_consumed = local_pv_used + ren_s * grid_import
     total_energy_supplied = local_pv_used + grid_import
+    
+    # renewable_share: % of supplied electricity from renewables (local PV + renewable grid mix)
+    # local_pv_absorption: % of PV generation consumed locally (self-consumption rate)
+    # grid_import_share: % of supplied electricity drawn from the grid (lower = more self-sufficient)
 
     renewable_share = np.sum(ren_consumed) / np.sum(total_energy_supplied) * 100
     local_pv_absorption = np.sum(local_pv_used) / np.sum(pv_generated) * 100
@@ -258,7 +272,7 @@ def main():
     print(f"  Local PV absorption:                      {local_pv_absorption:.2f}%")
     print(f"  Grid import share of supplied electricity:{grid_import_share:.2f}%")
 
-    # Save metrics for cross-strategy comparison
+    # Save metrics for strategy comparison
     metrics = {"renewable_share": renewable_share, "local_pv_absorption": local_pv_absorption, "grid_import_share": grid_import_share}
     np.save(f"data/{control_strategy}_metrics.npy", metrics)
     cent_metrics_path = "data/centralized_metrics.npy"
