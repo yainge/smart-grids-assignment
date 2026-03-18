@@ -143,7 +143,6 @@ def neighborhood_strategy(time_step, temperature_data : np.ndarray, renewable_sh
 
     ren = renewable_share[time_step]
 
-    ## YKA
     # 1: absorb neighborhood PV surplus into batteries
     # 2: if there is no PV surplus, charge batteries from grid when renewable share is high,
     # or discharge batteries to reduce imports when renewable share is low
@@ -218,6 +217,19 @@ def main():
     vizualizer.plot_results_reference_and_total_load(simulator.reference_load, simulator.total_load)
     vizualizer.print_metrics_renewable_share_total_load(simulator.ren_share, simulator.total_load)
 
+    # Save total load for cross-strategy comparison
+    import os
+    np.save(f"data/{control_strategy}_total_load.npy", simulator.total_load)
+    cent_path = "data/centralized_total_load.npy"
+    decent_path = "data/decentralized_total_load.npy"
+    if os.path.exists(cent_path) and os.path.exists(decent_path):
+        Vizualizer.plot_comparison(
+            simulator.reference_load,
+            np.load(cent_path),
+            np.load(decent_path),
+            sim_length,
+        )
+
     # Additional metrics
     total_pv = np.sum(np.array([pv.consumption.astype(float) for pv in simulator.pvs]), axis=0)
     pv_generated = -total_pv  
@@ -237,10 +249,25 @@ def main():
     ren_consumed = local_pv_used + ren_s * grid_import
     total_energy_supplied = local_pv_used + grid_import
 
+    renewable_share = np.sum(ren_consumed) / np.sum(total_energy_supplied) * 100
+    local_pv_absorption = np.sum(local_pv_used) / np.sum(pv_generated) * 100
+    grid_import_share = np.sum(grid_import) / np.sum(total_energy_supplied) * 100
+
     print(f"\nMETRICS ({control_strategy.upper()} CONTROL):")
-    print(f"  Renewable share of supplied electricity: {np.sum(ren_consumed) / np.sum(total_energy_supplied) * 100:.2f}%")
-    print(f"  Local PV absorption:                      {np.sum(local_pv_used) / np.sum(pv_generated) * 100:.2f}%")
-    print(f"  Grid import share of supplied electricity:{np.sum(grid_import) / np.sum(total_energy_supplied) * 100:.2f}%")
+    print(f"  Renewable share of supplied electricity: {renewable_share:.2f}%")
+    print(f"  Local PV absorption:                      {local_pv_absorption:.2f}%")
+    print(f"  Grid import share of supplied electricity:{grid_import_share:.2f}%")
+
+    # Save metrics for cross-strategy comparison
+    metrics = {"renewable_share": renewable_share, "local_pv_absorption": local_pv_absorption, "grid_import_share": grid_import_share}
+    np.save(f"data/{control_strategy}_metrics.npy", metrics)
+    cent_metrics_path = "data/centralized_metrics.npy"
+    decent_metrics_path = "data/decentralized_metrics.npy"
+    if os.path.exists(cent_metrics_path) and os.path.exists(decent_metrics_path):
+        Vizualizer.plot_metrics_comparison(
+            np.load(cent_metrics_path, allow_pickle=True).item(),
+            np.load(decent_metrics_path, allow_pickle=True).item(),
+        )
 
 if __name__ == '__main__':
     exit(main())
