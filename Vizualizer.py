@@ -20,37 +20,141 @@ class Vizualizer:
 
         # Plot total calculated load and the reference load
         reference_load = reference_load[0:self.sim_length]
+        plt.figure(figsize=(12, 5))
+        #plt.plot(reference_load, label="Reference", linewidth=1)
+        plt.plot(total_load, label=f"({self.mode} control)", linewidth=1)
         plt.title(f"Total Load Neighborhood ({self.mode} control)")
-        plt.plot(reference_load, label="Reference")
-        plt.plot(total_load, label="Simulation")
-        plt.xlabel('PTU [-]')
-        plt.ylabel('Kilowatt [kW]')
+        plt.xlabel("PTU [-]")
+        plt.ylabel("Power [kW]")
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
         plt.savefig(f"figures/{self.mode}_total_load.png", dpi=150, bbox_inches="tight")
-
-
-        # Calculate average daily profile
+        plt.close()
+     
+        # Plot Average daily profile
         amount_of_time_steps_in_day = constants.AMOUNT_OF_TIME_STEPS_IN_DAY
         time_step_seconds = constants.TIME_STEP_SECONDS
+        step_hours = time_step_seconds / 3600
 
-        power_split = np.split(total_load, self.sim_length / amount_of_time_steps_in_day)
-        reference_split = np.split(reference_load, self.sim_length / amount_of_time_steps_in_day)
-        power_split = sum(power_split)
-        reference_split = sum(reference_split)
-        max_val = max(max(power_split),max(reference_split))
-        power_split /= max_val
-        reference_split /= max_val
-    
-        # Plot the average daily profiles
-        plt.title(f"Normalized Daily Power Profile ({self.mode} control)")
-        plt.plot(np.arange(1, amount_of_time_steps_in_day + 1) * time_step_seconds / 3600, power_split, label = 'Simulation')
-        plt.plot(np.arange(1, amount_of_time_steps_in_day + 1) * time_step_seconds / 3600, reference_split, label = "Reference")
-        plt.xlabel('Hour [-]')
-        plt.ylabel('Relative Power [-]')
+        n_days = self.sim_length // amount_of_time_steps_in_day
+
+        total_daily = total_load[:n_days * amount_of_time_steps_in_day].reshape(n_days, amount_of_time_steps_in_day)
+        ref_daily = reference_load[:n_days * amount_of_time_steps_in_day].reshape(n_days, amount_of_time_steps_in_day)
+
+        avg_total_daily = np.mean(total_daily, axis=0)
+        avg_ref_daily = np.mean(ref_daily, axis=0)
+
+        # normalize both by same max value for comparison
+        max_val = max(np.max(avg_total_daily), np.max(avg_ref_daily))
+        avg_total_daily_norm = avg_total_daily / max_val
+        avg_ref_daily_norm = avg_ref_daily / max_val
+
+        hours = np.arange(amount_of_time_steps_in_day) * step_hours
+
+        plt.figure(figsize=(10, 5))
+        #plt.plot(hours, avg_ref_daily_norm, label="Reference", linewidth=2)
+        plt.plot(hours, avg_total_daily_norm, label=f"({self.mode} control)", linewidth=2)
+        plt.title(f"Normalized Average Daily Power Profile ({self.mode} control)")
+        plt.xlabel("Hour of day [-]")
+        plt.ylabel("Relative Power [-]")
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
         plt.savefig(f"figures/{self.mode}_daily_profile.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        
+    @staticmethod
+    def plot_comparison(reference_load, centralized_load, decentralized_load, sim_length):
+        ref = reference_load[:sim_length]
+        cent = centralized_load[:sim_length]
+        decent = decentralized_load[:sim_length]
+
+        # Total load comparison
+        plt.figure(figsize=(12, 5))
+        #plt.plot(ref, label="Reference", linewidth=1)
+        plt.plot(cent, label="Centralized", linewidth=1)
+        plt.plot(decent, label="Decentralized", linewidth=1)
+        plt.title("Total Load Neighborhood - Strategy Comparison")
+        plt.xlabel("Time [PTU]")
+        plt.ylabel("Power [kW]")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig("figures/comparison_total_load.png", dpi=150, bbox_inches="tight")
+        plt.close()
+
+        # Daily profile comparison
+        amount_of_time_steps_in_day = constants.AMOUNT_OF_TIME_STEPS_IN_DAY
+        step_hours = constants.TIME_STEP_SECONDS / 3600
+        n_days = sim_length // amount_of_time_steps_in_day
+
+        def avg_daily(load):
+            return np.mean(load[:n_days * amount_of_time_steps_in_day].reshape(n_days, amount_of_time_steps_in_day), axis=0)
+
+        avg_ref = avg_daily(ref)
+        avg_cent = avg_daily(cent)
+        avg_decent = avg_daily(decent)
+        max_val = max(np.max(avg_ref), np.max(avg_cent), np.max(avg_decent))
+
+        hours = np.arange(amount_of_time_steps_in_day) * step_hours
+        plt.figure(figsize=(10, 5))
+        #plt.plot(hours, avg_ref / max_val, label="Reference", linewidth=2)
+        plt.plot(hours, avg_cent / max_val, label="Centralized", linewidth=2)
+        plt.plot(hours, avg_decent / max_val, label="Decentralized", linewidth=2)
+        plt.title("Normalized Average Daily Power Profile - Strategy Comparison")
+        plt.xlabel("Hour of day [-]")
+        plt.ylabel("Relative Power [-]")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig("figures/comparison_daily_profile.png", dpi=150, bbox_inches="tight")
+        plt.close()
+
+    @staticmethod
+    def plot_metrics_comparison(centralized_metrics, decentralized_metrics):
+        """
+        Bar chart comparing renewable share, local PV absorption, and grid import share
+        between centralized and decentralized control.
+
+        Each metrics dict has keys: 'renewable_share', 'local_pv_absorption', 'grid_import_share'
+        """
+        labels = ["Renewable Share\nof Supplied Electricity", "Local PV\nAbsorption", "Grid Import Share\nof Supplied Electricity"]
+        cent_vals = [
+            centralized_metrics["renewable_share"],
+            centralized_metrics["local_pv_absorption"],
+            centralized_metrics["grid_import_share"],
+        ]
+        decent_vals = [
+            decentralized_metrics["renewable_share"],
+            decentralized_metrics["local_pv_absorption"],
+            decentralized_metrics["grid_import_share"],
+        ]
+
+        x = np.arange(len(labels))
+        width = 0.35
+
+        _, ax = plt.subplots(figsize=(9, 5))
+        bars_cent = ax.bar(x - width / 2, cent_vals, width, label="Centralized")
+        bars_decent = ax.bar(x + width / 2, decent_vals, width, label="Decentralized")
+
+        ax.set_ylabel("Percentage [%]")
+        ax.set_title("Strategy Comparison - Key Metrics")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.legend()
+        ax.grid(True, axis="y")
+
+        for bar in bars_cent:
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                    f"{bar.get_height():.1f}%", ha="center", va="bottom", fontsize=9)
+        for bar in bars_decent:
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                    f"{bar.get_height():.1f}%", ha="center", va="bottom", fontsize=9)
+
+        plt.tight_layout()
+        plt.savefig("figures/comparison_metrics.png", dpi=150, bbox_inches="tight")
+        plt.close()
 
     def print_metrics_renewable_share_total_load(self, renewable_share : np.ndarray, total_load : np.ndarray):
         """
